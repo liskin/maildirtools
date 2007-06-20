@@ -25,7 +25,7 @@ struct maildir_folder {
 };
 
 struct maildir_folder_stats {
-    int msgs, passed, replied, seen, trashed, draft, flagged;
+    int msgs, passed, replied, seen, trashed, draft, flagged, new;
 };
 
 enum message_flags {

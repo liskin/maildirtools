@@ -530,7 +530,12 @@ static void maildir_folder_stats_message(
     if (flags & MF_SEEN) params->mdf->stats->seen++; 
     if (flags & MF_TRASHED) params->mdf->stats->trashed++; 
     if (flags & MF_DRAFT) params->mdf->stats->draft++; 
-    if (flags & MF_FLAGGED) params->mdf->stats->flagged++; 
+    if (flags & MF_FLAGGED) params->mdf->stats->flagged++;
+
+    /* A message is considered new, if its flags are empty or contain just
+     * MF_FLAGGED. (because you may flag the message in sieve/procmail) */
+    if (flags == 0 || flags == MF_FLAGGED)
+	params->mdf->stats->new++;
 }
 
 static int message_parse_flags(const char *name)
