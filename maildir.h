@@ -41,12 +41,17 @@ enum maildir_folder_data {
     MFD_STATS	= 1 << 0
 };
 
+enum fill_subdirs {
+    SD_NEW	= 1 << 0,
+    SD_CUR	= 1 << 1
+};
+
 int maildirpp_open(struct maildirpp *md, const char *path);
 void maildirpp_close(struct maildirpp *md);
 int maildirpp_dirty(struct maildirpp *md);
 int maildirpp_dirty_subfolders(struct maildirpp *md);
 int maildirpp_refresh_subfolders_list(struct maildirpp *md);
 void maildirpp_set_verbose(int new_verbose);
-void maildirpp_folders_fill(struct maildirpp *md, int data);
+void maildirpp_folders_fill(struct maildirpp *md, int data, int subdirs);
 
 #endif /* MAILDIR_H */

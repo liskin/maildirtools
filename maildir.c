@@ -44,9 +44,10 @@ struct maildir_folder_walk_messages_params;
 typedef void (*maildir_folder_walk_messages_func)
     (struct maildir_folder_walk_messages_params *params);
 static void maildir_folder_walk_messages(struct maildir_folder *mdf,
-	GArray *funcs);
-static void maildir_folder_fill(struct maildir_folder *mdf, int data);
-void maildirpp_folders_fill(struct maildirpp *md, int data);
+	GArray *funcs, int walk_subdirs);
+static void maildir_folder_fill(struct maildir_folder *mdf, int data,
+	int subdirs);
+void maildirpp_folders_fill(struct maildirpp *md, int data, int subdirs);
 static void maildir_folder_stats_message(
 	struct maildir_folder_walk_messages_params *params);
 static int message_parse_flags(const char *name);
@@ -410,7 +411,7 @@ struct maildir_folder_walk_messages_params {
  * <code>void (*)(struct maildir_folder_walk_messages_params *params)</code>.
  */
 static void maildir_folder_walk_messages(struct maildir_folder *mdf,
-	GArray *funcs)
+	GArray *funcs, int walk_subdirs)
 {
     /* Prepare the path string */
     char path2[PATH_MAX];
@@ -424,10 +425,14 @@ static void maildir_folder_walk_messages(struct maildir_folder *mdf,
     }
 
     /* Unset dirty flag and rewind dirs */
-    sig_fd_isset(dirfd(mdf->dir_new), 1, 1);
-    sig_fd_isset(dirfd(mdf->dir_cur), 1, 1);
-    rewinddir(mdf->dir_new);
-    rewinddir(mdf->dir_cur);
+    if (walk_subdirs & SD_NEW) {
+	sig_fd_isset(dirfd(mdf->dir_new), 1, 1);
+	rewinddir(mdf->dir_new);
+    }
+    if (walk_subdirs & SD_CUR) {
+	sig_fd_isset(dirfd(mdf->dir_cur), 1, 1);
+	rewinddir(mdf->dir_cur);
+    }
 
     /* Load the list of subfolders */
     struct dirent *dent;
@@ -436,6 +441,9 @@ static void maildir_folder_walk_messages(struct maildir_folder *mdf,
     static const char subdirs[2][6] = { "/new/", "/cur/" };
 
     for (int subdir = 0; subdir < 2; subdir++) {
+	if (!(walk_subdirs & (subdir ? SD_CUR : SD_NEW)))
+	    continue;
+
 	strcpy(path2 + path2_len, subdirs[subdir]);
 	while (1) {
 	    errno = 0;
@@ -475,7 +483,8 @@ static void maildir_folder_walk_messages(struct maildir_folder *mdf,
 }
 
 /** Load the requested data. */
-static void maildir_folder_fill(struct maildir_folder *mdf, int data)
+static void maildir_folder_fill(struct maildir_folder *mdf, int data,
+	int subdirs)
 {
     GArray *funcs = g_array_new(0, 0,
 	    sizeof(maildir_folder_walk_messages_func));
@@ -489,13 +498,13 @@ static void maildir_folder_fill(struct maildir_folder *mdf, int data)
 	g_array_append_val(funcs, f);
     }
 
-    maildir_folder_walk_messages(mdf, funcs);
+    maildir_folder_walk_messages(mdf, funcs, subdirs);
 
     g_array_free(funcs, 1);
 }
 
 /** Load the requested data for dirty folders. */
-void maildirpp_folders_fill(struct maildirpp *md, int data)
+void maildirpp_folders_fill(struct maildirpp *md, int data, int subdirs)
 {
     assert(md->subfolders != NULL);
 
@@ -505,7 +514,7 @@ void maildirpp_folders_fill(struct maildirpp *md, int data)
 
 	if (sig_fd_isset(dirfd(mdf->dir_new), 0, 1) ||
 		sig_fd_isset(dirfd(mdf->dir_cur), 0, 1))
-	    maildir_folder_fill(mdf, data);
+	    maildir_folder_fill(mdf, data, subdirs);
     }
 }
 
