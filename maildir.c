@@ -25,6 +25,7 @@ static int sig_inited = 0;
 static void sig_handler(int sig, siginfo_t *si, void *data);
 static void sig_init(void);
 static void sig_block(int block);
+static void sig_wait(int (*f) (void *), void *param);
 static int sig_fd_isset(int fd, int clear, int sig);
 static int dnotify(int fd, int flags);
 int maildirpp_open(struct maildirpp *md, const char *path);
@@ -37,8 +38,10 @@ void maildirpp_close(struct maildirpp *md);
 static int maildir_folder_open(struct maildir_folder *mdf, const char *path);
 static void maildir_folder_close(struct maildir_folder *mdf);
 static void maildir_folder_close_and_free(struct maildir_folder *mdf);
-int maildirpp_dirty(struct maildirpp *md);
-int maildirpp_dirty_subfolders(struct maildirpp *md);
+int maildirpp_dirty(struct maildirpp *md, int dont_block);
+int maildirpp_dirty_subfolders(struct maildirpp *md, int dont_block);
+static int maildirpp_dirty2(struct maildirpp *md);
+void maildirpp_pause_if_not_dirty(struct maildirpp *md);
 void maildirpp_set_verbose(int new_verbose);
 struct maildir_folder_walk_messages_params;
 typedef void (*maildir_folder_walk_messages_func)
@@ -87,6 +90,20 @@ static void sig_block(int block)
     sigemptyset(&mask);
     sigaddset(&mask, DNOTIFY_SIGNAL);
     sigprocmask(block ? SIG_BLOCK : SIG_UNBLOCK, &mask, NULL);
+}
+
+/** Block the signal, run the function and if it returns 1, return, otherwise
+ * unblock and pause. */
+static void sig_wait(int (*f) (void *), void *param)
+{
+    sigset_t mask, old_mask;
+
+    sigemptyset(&mask);
+    sigaddset(&mask, DNOTIFY_SIGNAL);
+    sigprocmask(SIG_BLOCK, &mask, &old_mask);
+    if (f(param) == 0)
+	sigsuspend(&old_mask);
+    sigprocmask(SIG_UNBLOCK, &mask, NULL);
 }
 
 /** Check and eventually clear/set a given fd in the dirty_fds set. 
@@ -361,30 +378,32 @@ static void maildir_folder_close_and_free(struct maildir_folder *mdf)
     g_slice_free(struct maildir_folder, mdf);
 }
 
-/** Is the maildir++ dirty (has the list of subfolders changed?) */
-int maildirpp_dirty(struct maildirpp *md)
+/** Is the maildir++ dirty (has the list of subfolders changed?)
+ * \param dont_block - non-public API, just pass 0 */
+int maildirpp_dirty(struct maildirpp *md, int dont_block)
 {
     int ret = 0;
 
-    sig_block(1);
+    if (!dont_block) sig_block(1);
     ret = sig_fd_isset(dirfd(md->dir), 0, 0);
     assert(md->subdirs != NULL);
     for (int i = 0; !ret && i < md->subdirs->len; i++) {
 	DIR *subdir = (DIR *) g_ptr_array_index(md->subdirs, i);
 	ret |= sig_fd_isset(dirfd(subdir), 0, 0);
     }
-    sig_block(0);
+    if (!dont_block) sig_block(0);
 
     return ret;
 }
 
 /** Is any of the subfolders dirty?
- * (message added/removed/changed status/modified) */
-int maildirpp_dirty_subfolders(struct maildirpp *md)
+ * (message added/removed/changed status/modified)
+ * \param dont_block - non-public API, just pass 0 */
+int maildirpp_dirty_subfolders(struct maildirpp *md, int dont_block)
 {
     int ret = 0;
 
-    sig_block(1);
+    if (!dont_block) sig_block(1);
     assert(md->subfolders != NULL);
     for (int i = 0; !ret && i < md->subfolders->len; i++) {
 	struct maildir_folder *mdf =
@@ -392,9 +411,20 @@ int maildirpp_dirty_subfolders(struct maildirpp *md)
 	ret |= sig_fd_isset(dirfd(mdf->dir_new), 0, 0);
 	ret |= sig_fd_isset(dirfd(mdf->dir_cur), 0, 0);
     }
-    sig_block(0);
+    if (!dont_block) sig_block(0);
 
     return ret;
+}
+
+static int maildirpp_dirty2(struct maildirpp *md)
+{
+    return maildirpp_dirty(md, 1) || maildirpp_dirty_subfolders(md, 1);
+}
+
+/** Reliable way to wait for signal or just return if it's dirty */
+void maildirpp_pause_if_not_dirty(struct maildirpp *md)
+{
+    sig_wait((int (*) (void *)) maildirpp_dirty2, (void *) md);
 }
 
 /** Set verbosity. */

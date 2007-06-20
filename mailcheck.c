@@ -98,12 +98,6 @@ int main(int argc, char *argv[])
 
     do {
 	if (watch) {
-	    /* If nothing happened, don't bother updating.
-	     * Note: maildirpp_dirty_subfolders is always true during the
-	     * first run. */
-	    if (!maildirpp_dirty(&md) && !maildirpp_dirty_subfolders(&md))
-		goto justsleep;
-
 	    erase();
 	    move(0, 0);
 
@@ -112,7 +106,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* If the list of subfolders changes, refresh it. */
-	if (maildirpp_dirty(&md))
+	if (maildirpp_dirty(&md, 0))
 	    maildirpp_refresh_subfolders_list(&md);
 
 	/* Print counts of new messages. */
@@ -131,10 +125,7 @@ int main(int argc, char *argv[])
 
 	if (watch) {
 	    refresh();
-	    /* A signal may have come between the refresh and the sleep call.
-	     * That's why it's sleep and not pause. */
-justsleep:
-	    sleep(60);
+	    maildirpp_pause_if_not_dirty(&md);
 	}
     } while (watch && !signalled);
 

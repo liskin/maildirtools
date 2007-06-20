@@ -48,8 +48,9 @@ enum fill_subdirs {
 
 int maildirpp_open(struct maildirpp *md, const char *path);
 void maildirpp_close(struct maildirpp *md);
-int maildirpp_dirty(struct maildirpp *md);
-int maildirpp_dirty_subfolders(struct maildirpp *md);
+int maildirpp_dirty(struct maildirpp *md, int dont_block);
+int maildirpp_dirty_subfolders(struct maildirpp *md, int dont_block);
+void maildirpp_pause_if_not_dirty(struct maildirpp *md);
 int maildirpp_refresh_subfolders_list(struct maildirpp *md);
 void maildirpp_set_verbose(int new_verbose);
 void maildirpp_folders_fill(struct maildirpp *md, int data, int subdirs);
