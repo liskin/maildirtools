@@ -194,8 +194,8 @@ static int maildirpp_load_subfolders_list(struct maildirpp *md)
 	    perror("readdir"); return -1;
 	}
 
-	/* Starts with . and is not a .. ? */
-	if (strcmp(dent->d_name,"..") && dent->d_name[0] == '.') {
+	/* Filter out "..". */
+	if (strcmp(dent->d_name,"..") /*&& dent->d_name[0] == '.'*/) {
 	    /* Another dumb len check */
 	    size_t name_len = strlen(dent->d_name);
 	    if (name_len + path2_len + 4 >= PATH_MAX) {
