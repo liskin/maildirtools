@@ -262,10 +262,12 @@ static void maildirpp_free_subfolders_list(struct maildirpp *md)
     g_ptr_array_foreach(md->subfolders,
 	    (GFunc) maildir_folder_close_and_free, 0);
     g_ptr_array_free(md->subfolders, 1);
+    md->subfolders = 0;
 
     assert(md->subdirs != NULL);
     g_ptr_array_foreach(md->subdirs, (GFunc) closedir, 0);
     g_ptr_array_free(md->subdirs, 1);
+    md->subdirs = 0;
 }
 
 /** Refresh the list of subfolders. */
