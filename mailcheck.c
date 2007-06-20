@@ -98,11 +98,17 @@ int main(int argc, char *argv[])
 
     do {
 	if (watch) {
+	    /* If nothing happened, don't bother updating.
+	     * Note: maildirpp_dirty_subfolders is always true during the
+	     * first run. */
+	    if (!maildirpp_dirty(&md) && !maildirpp_dirty_subfolders(&md))
+		goto justsleep;
+
 	    erase();
 	    move(0, 0);
 
 	    time_t t = time(0);
-	    print("\tLast update: %s\n", ctime(&t));
+	    print("\tLast change: %s\n", ctime(&t));
 	}
 
 	/* If the list of subfolders changes, refresh it. */
@@ -127,6 +133,7 @@ int main(int argc, char *argv[])
 	    refresh();
 	    /* A signal may have come between the refresh and the sleep call.
 	     * That's why it's sleep and not pause. */
+justsleep:
 	    sleep(60);
 	}
     } while (watch && !signalled);
