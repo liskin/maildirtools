@@ -15,6 +15,7 @@ install: all
 
 libmaildirpp.so: libmaildirpp.o maildir.o
 
+mailcheck: LDLIBS += -lncurses
 mailcheck: mailcheck.o libmaildirpp.so
 
 -include $(SOURCES:.c=.d)
