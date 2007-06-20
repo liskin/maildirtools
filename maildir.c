@@ -496,7 +496,7 @@ static void maildir_folder_walk_messages(struct maildir_folder *mdf,
 
 	    strcpy(path2 + path2_len + 5, dent->d_name);
 	    if (stat(path2, &st)) {
-		perror(path2); continue; /* - '' - */
+		VERBOSE(perror(path2)); continue;
 	    }
 
 	    if (!S_ISREG(st.st_mode))
