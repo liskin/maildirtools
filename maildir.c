@@ -225,6 +225,7 @@ static int maildirpp_load_subfolders_list(struct maildirpp *md)
 
 		struct maildir_folder *folder =
 		    g_slice_new0(struct maildir_folder);
+		folder->md = md;
 		if (maildir_folder_open(folder, path2) == 0) {
 		    g_ptr_array_add(md->subfolders, folder);
 		    opened = 1;
@@ -539,7 +540,8 @@ void maildirpp_folders_walk(struct maildirpp *md, GArray *folder_funcs,
 	    }
 
 	    /* Call the message functions. */
-	    maildir_folder_walk_messages(mdf, msgs_funcs, subdirs);
+	    if (msgs_funcs->len > 0)
+		maildir_folder_walk_messages(mdf, msgs_funcs, subdirs);
 	}
     }
 }

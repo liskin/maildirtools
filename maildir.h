@@ -20,6 +20,8 @@ struct maildirpp {
 struct maildir_folder_stats;
 
 struct maildir_folder {
+    struct maildirpp *md;
+
     char path[PATH_MAX];
     DIR *dir_new, *dir_cur;
 
