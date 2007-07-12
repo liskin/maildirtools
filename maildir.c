@@ -453,7 +453,6 @@ static void maildir_folder_walk_messages(struct maildir_folder *mdf,
     /* Load the list of subfolders */
     struct dirent *dent;
     struct maildir_folder_walk_messages_params params = { .mdf = mdf };
-    struct stat st;
     static const char subdirs[2][6] = { "/new/", "/cur/" };
 
     for (int subdir = 0; subdir < 2; subdir++) {
@@ -479,14 +478,23 @@ static void maildir_folder_walk_messages(struct maildir_folder *mdf,
 	    }
 
 	    strcpy(path2 + path2_len + 5, dent->d_name);
+
+#if 0
+	    /* Stat the messages when walking them? This significantly
+	     * sacrifices performance but makes sure the files in new/ and
+	     * cur/ are ordinary files. */
+
+	    struct stat st;
 	    if (stat(path2, &st)) {
 		VERBOSE(perror(path2)); continue;
 	    }
 
 	    if (!S_ISREG(st.st_mode))
 		continue;
+#endif
 
 	    params.msg_name = dent->d_name;
+	    params.msg_full_path = path2;
 	    for (int i = 0; i < funcs->len; i++) {
 		maildir_folder_walk_messages_func f =
 		    g_array_index(funcs, maildir_folder_walk_messages_func, i);
