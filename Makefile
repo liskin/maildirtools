@@ -1,3 +1,6 @@
+# This file is a part of the maildirtools package. See the COPYRIGHT file for
+# details.
+
 CFLAGS=-std=c99 -pedantic -Wall -g $(shell pkg-config --cflags glib-2.0)
 LDLIBS=$(shell pkg-config --libs glib-2.0)
 ALL=libmaildirpp.so mailcheck
