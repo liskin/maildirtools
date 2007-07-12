@@ -521,9 +521,9 @@ void maildirpp_folders_walk(struct maildirpp *md, GArray *folder_funcs,
 	if (sig_fd_isset(dirfd(mdf->dir_new), 0, 1) ||
 		sig_fd_isset(dirfd(mdf->dir_cur), 0, 1)) {
 	    /* Call the folder functions. */
-	    for (int i = 0; i < folder_funcs->len; i++) {
+	    for (int j = 0; j < folder_funcs->len; j++) {
 		maildir_folder_walk_func f =
-		    g_array_index(folder_funcs, maildir_folder_walk_func, i);
+		    g_array_index(folder_funcs, maildir_folder_walk_func, j);
 		f(mdf);
 	    }
 
