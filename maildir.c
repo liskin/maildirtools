@@ -28,29 +28,17 @@ static void sig_block(int block);
 static void sig_wait(int (*f) (void *), void *param);
 static int sig_fd_isset(int fd, int clear, int sig);
 static int dnotify(int fd, int flags);
-int maildirpp_open(struct maildirpp *md, const char *path);
 static int maildirpp_load_subfolders_list(struct maildirpp *md);
 static int maildirpp_compare_folder(struct maildir_folder **a,
 	struct maildir_folder **b);
 static void maildirpp_free_subfolders_list(struct maildirpp *md);
-int maildirpp_refresh_subfolders_list(struct maildirpp *md);
-void maildirpp_close(struct maildirpp *md);
 static int maildir_folder_open(struct maildir_folder *mdf, const char *path);
 static void maildir_folder_close(struct maildir_folder *mdf);
 static void maildir_folder_close_and_free(struct maildir_folder *mdf);
-int maildirpp_dirty(struct maildirpp *md, int dont_block);
-int maildirpp_dirty_subfolders(struct maildirpp *md, int dont_block);
 static int maildirpp_dirty2(struct maildirpp *md);
-void maildirpp_pause_if_not_dirty(struct maildirpp *md);
-void maildirpp_set_verbose(int new_verbose);
-struct maildir_folder_walk_messages_params;
-typedef void (*maildir_folder_walk_messages_func)
-    (struct maildir_folder_walk_messages_params *params);
 static void maildir_folder_walk_messages(struct maildir_folder *mdf,
 	GArray *funcs, int walk_subdirs);
-static void maildir_folder_fill(struct maildir_folder *mdf, int data,
-	int subdirs);
-void maildirpp_folders_fill(struct maildirpp *md, int data, int subdirs);
+static void maildir_folder_stats_clear(struct maildir_folder *mdf);
 static void maildir_folder_stats_message(
 	struct maildir_folder_walk_messages_params *params);
 static int message_parse_flags(const char *name);
@@ -433,14 +421,10 @@ void maildirpp_set_verbose(int new_verbose)
     verbose = new_verbose;
 }
 
-/** Params for walker functions. */
-struct maildir_folder_walk_messages_params {
-    struct maildir_folder *mdf;
-    const char *msg_name, *msg_full_path;
-};
-
 /** Walk the list of messages, calling the specified functions of type
  * <code>void (*)(struct maildir_folder_walk_messages_params *params)</code>.
+ *
+ * \param walk_subdirs Mask of SD_CUR, SD_NEW -- subdirs to be walked.
  */
 static void maildir_folder_walk_messages(struct maildir_folder *mdf,
 	GArray *funcs, int walk_subdirs)
@@ -514,42 +498,78 @@ static void maildir_folder_walk_messages(struct maildir_folder *mdf,
     /*g_ptr_array_free(funcs, 1);*/
 }
 
-/** Load the requested data. */
-static void maildir_folder_fill(struct maildir_folder *mdf, int data,
-	int subdirs)
-{
-    GArray *funcs = g_array_new(0, 0,
-	    sizeof(maildir_folder_walk_messages_func));
-
-    if (data & MFD_STATS) {
-	if (mdf->stats)
-	    g_slice_free(struct maildir_folder_stats, mdf->stats);
-	mdf->stats = g_slice_new0(struct maildir_folder_stats);
-
-	maildir_folder_walk_messages_func f = maildir_folder_stats_message;
-	g_array_append_val(funcs, f);
-    }
-
-    maildir_folder_walk_messages(mdf, funcs, subdirs);
-
-    g_array_free(funcs, 1);
-}
-
-/** Load the requested data for dirty folders. */
-void maildirpp_folders_fill(struct maildirpp *md, int data, int subdirs)
+/** Walk all dirty subfolders, calling the specified functions:
+ * For each dirty subfolder:
+ *   of type <code>void (*)(struct maildir_folder *)</code>
+ * For each message in each dirty subfolder:
+ *   of type
+ *   <code>void (*)(struct maildir_folder_walk_messages_params *)</code>.
+ *
+ * \param subdirs See #maildir_folder_walk_messages.
+ */
+void maildirpp_folders_walk(struct maildirpp *md, GArray *folder_funcs,
+	GArray *msgs_funcs, int subdirs)
 {
     assert(md->subfolders != NULL);
 
+    /* For each folder: */
     for (int i = 0; i < md->subfolders->len; i++) {
 	struct maildir_folder *mdf =
 	    (struct maildir_folder *) g_ptr_array_index(md->subfolders, i);
 
+	/* For each dirty folder: */
 	if (sig_fd_isset(dirfd(mdf->dir_new), 0, 1) ||
-		sig_fd_isset(dirfd(mdf->dir_cur), 0, 1))
-	    maildir_folder_fill(mdf, data, subdirs);
+		sig_fd_isset(dirfd(mdf->dir_cur), 0, 1)) {
+	    /* Call the folder functions. */
+	    for (int i = 0; i < folder_funcs->len; i++) {
+		maildir_folder_walk_func f =
+		    g_array_index(folder_funcs, maildir_folder_walk_func, i);
+		f(mdf);
+	    }
+
+	    /* Call the message functions. */
+	    maildir_folder_walk_messages(mdf, msgs_funcs, subdirs);
+	}
     }
 }
 
+/** Load the requested data for dirty folders.
+ *
+ * \param subdirs See #maildir_folder_walk_messages.
+ */
+void maildirpp_folders_fill(struct maildirpp *md, int data, int subdirs)
+{
+    assert(md->subfolders != NULL);
+
+    GArray *folder_funcs = g_array_new(0, 0,
+	    sizeof(maildir_folder_walk_func));
+    GArray *msgs_funcs = g_array_new(0, 0,
+	    sizeof(maildir_folder_walk_messages_func));
+
+    if (data & MFD_STATS) {
+	maildir_folder_walk_func ff = maildir_folder_stats_clear;
+	maildir_folder_walk_messages_func mf = maildir_folder_stats_message;
+	g_array_append_val(folder_funcs, ff);
+	g_array_append_val(msgs_funcs, mf);
+    }
+
+    maildirpp_folders_walk(md, folder_funcs, msgs_funcs, subdirs);
+
+    g_array_free(msgs_funcs, 1);
+    g_array_free(folder_funcs, 1);
+}
+
+/** Free the current and allocate a new stats structure for a given folder
+ * (which is going to be walked).
+ */
+static void maildir_folder_stats_clear(struct maildir_folder *mdf)
+{
+    if (mdf->stats)
+	g_slice_free(struct maildir_folder_stats, mdf->stats);
+    mdf->stats = g_slice_new0(struct maildir_folder_stats);
+}
+
+/** Count in the message. */
 static void maildir_folder_stats_message(
 	struct maildir_folder_walk_messages_params *params)
 {
@@ -570,6 +590,7 @@ static void maildir_folder_stats_message(
 	params->mdf->stats->new++;
 }
 
+/** Parse flags of a message. */
 static int message_parse_flags(const char *name)
 {
     int ret = 0;

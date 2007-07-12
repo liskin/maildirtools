@@ -46,6 +46,17 @@ enum fill_subdirs {
     SD_CUR	= 1 << 1
 };
 
+/** Params for walker functions. */
+struct maildir_folder_walk_messages_params {
+    struct maildir_folder *mdf;
+    const char *msg_name, *msg_full_path;
+};
+
+typedef void (*maildir_folder_walk_messages_func)
+    (struct maildir_folder_walk_messages_params *params);
+typedef void (*maildir_folder_walk_func)
+    (struct maildir_folder *mdf);
+
 int maildirpp_open(struct maildirpp *md, const char *path);
 void maildirpp_close(struct maildirpp *md);
 int maildirpp_dirty(struct maildirpp *md, int dont_block);
@@ -53,6 +64,8 @@ int maildirpp_dirty_subfolders(struct maildirpp *md, int dont_block);
 void maildirpp_pause_if_not_dirty(struct maildirpp *md);
 int maildirpp_refresh_subfolders_list(struct maildirpp *md);
 void maildirpp_set_verbose(int new_verbose);
+void maildirpp_folders_walk(struct maildirpp *md, GArray *folder_funcs,
+	GArray *msgs_funcs, int subdirs);
 void maildirpp_folders_fill(struct maildirpp *md, int data, int subdirs);
 
 #endif /* MAILDIR_H */
