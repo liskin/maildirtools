@@ -20,7 +20,11 @@ clean:
 	$(RM) $(wildcard *.o) $(wildcard *.d) $(wildcard $(ALL))
 install: all
 	for i in $(ALLLIBS); do \
-		$(INSTALL_BIN) $$i $(DESTDIR)/lib; \
+		if [ "`stat -c %F $$i`" = "symbolic link" ]; then \
+			cp -df $$i $(DESTDIR)/lib/$$i; \
+		else \
+			$(INSTALL_BIN) $$i $(DESTDIR)/lib; \
+		fi \
 	done
 	for i in $(BINS); do \
 		$(INSTALL_BIN) $$i $(DESTDIR)/bin; \
