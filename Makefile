@@ -1,9 +1,15 @@
 # This file is a part of the maildirtools package. See the COPYRIGHT file for
 # details.
 
+LDCONFIG=/sbin/ldconfig
 CFLAGS=-std=c99 -pedantic -Wall -g $(shell pkg-config --cflags glib-2.0)
 LDLIBS=$(shell pkg-config --libs glib-2.0)
-ALL=libmaildirpp.so mailcheck
+SOMAJOR=0
+SOMINOR=1
+LIBS=libmaildirpp.so
+BINS=mailcheck
+ALLLIBS=$(foreach lib,$(LIBS),$(lib).$(SOMAJOR).$(SOMINOR) $(lib).$(SOMAJOR) $(lib))
+ALL=$(ALLLIBS) $(BINS)
 SOURCES=$(wildcard *.c)
 DESTDIR=/usr
 
@@ -13,10 +19,15 @@ all: $(ALL)
 clean:
 	$(RM) $(wildcard *.o) $(wildcard *.d) $(wildcard $(ALL))
 install: all
-	$(INSTALL_BIN) libmaildirpp.so $(DESTDIR)/lib
-	$(INSTALL_BIN) mailcheck $(DESTDIR)/bin
+	for i in $(ALLLIBS); do \
+		$(INSTALL_BIN) $$i $(DESTDIR)/lib; \
+	done
+	for i in $(BINS); do \
+		$(INSTALL_BIN) $$i $(DESTDIR)/bin; \
+	done
+	$(LDCONFIG)
 
-libmaildirpp.so: libmaildirpp.o maildir.o
+libmaildirpp.so.$(SOMAJOR).$(SOMINOR): libmaildirpp.o maildir.o
 
 mailcheck: LDLIBS += -lncurses
 mailcheck: mailcheck.o libmaildirpp.so
@@ -24,10 +35,16 @@ mailcheck: mailcheck.o libmaildirpp.so
 -include $(SOURCES:.c=.d)
 
 
-%.so: CFLAGS += -fPIC
-%.so: LDFLAGS += -shared
-%.so: %.o
+%.so.$(SOMAJOR).$(SOMINOR): CFLAGS += -fPIC
+%.so.$(SOMAJOR).$(SOMINOR): LDFLAGS += -shared \
+	-Wl,-soname,$(patsubst %.so.$(SOMAJOR).$(SOMINOR),%.so.$(SOMAJOR),$@)
+%.so.$(SOMAJOR).$(SOMINOR): %.o
 	$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) -o $@
+
+%.so.$(SOMAJOR): %.so.$(SOMAJOR).$(SOMINOR)
+	ln -s $< $@
+%.so: %.so.$(SOMAJOR)
+	ln -s $< $@
 
 %.d: %.c
 	@set -e; rm -f $@; \
