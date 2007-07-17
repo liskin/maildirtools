@@ -1,4 +1,7 @@
 *.o
 *.d
-*.so
+lib*.so
+lib*.so.*
 mailcheck
+tags
+cscope.out
