@@ -224,6 +224,7 @@ static int maildirpp_load_subfolders_list(struct maildirpp *md)
 
 		struct maildir_folder *folder =
 		    g_slice_new0(struct maildir_folder);
+		/* The zero ---^ is important! */
 		folder->md = md;
 		if (maildir_folder_open(folder, path2) == 0) {
 		    g_ptr_array_add(md->subfolders, folder);
@@ -232,9 +233,14 @@ static int maildirpp_load_subfolders_list(struct maildirpp *md)
 		    g_slice_free(struct maildir_folder, folder);
 	    }
 
-	    if (!opened) {
+	    if (!opened &&
+		    strcmp(dent->d_name, "new") &&
+		    strcmp(dent->d_name, "cur") &&
+		    strcmp(dent->d_name, "tmp")) {
 		/* Looks like a maildir folder but is not. Watch it in case it
 		 * becomes a folder. */
+		/* Since we don't require '.' at the beginning of a mailbox
+		 * name, exclude new/cur/tmp. */
 
 		path2[path2_len + name_len] = 0;
 
@@ -299,6 +305,7 @@ void maildirpp_close(struct maildirpp *md)
 /** Open a given subfolder. */
 static int maildir_folder_open(struct maildir_folder *mdf, const char *path)
 {
+    /* We assume the structure was zero-filled at allocation. */
     /*memset(mdf, 0, sizeof(struct maildir_folder));*/
 
     char path2[PATH_MAX];
