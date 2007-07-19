@@ -19,7 +19,7 @@ static volatile int signalled = 0;
 static int total = 0;
 
 /* Print the number of new messages in the folder. */
-void mailbox(struct maildir_folder *mdf)
+static void mailbox(struct maildir_folder *mdf)
 {
     int new = mdf->stats->new;
     if (new) {
@@ -32,7 +32,7 @@ void mailbox(struct maildir_folder *mdf)
     }
 }
 
-void sighandler(int sig)
+static void sighandler(int sig)
 {
     signalled = 1;
 }

@@ -2,7 +2,8 @@
 # details.
 
 LDCONFIG=/sbin/ldconfig
-CFLAGS=-std=c99 -pedantic -Wall -g $(shell pkg-config --cflags glib-2.0)
+CFLAGS=-std=c99 -pedantic -Wall -Wmissing-prototypes -Wmissing-declarations \
+       -g $(shell pkg-config --cflags glib-2.0)
 LDLIBS=$(shell pkg-config --libs glib-2.0)
 SOMAJOR=0
 SOMINOR=1
