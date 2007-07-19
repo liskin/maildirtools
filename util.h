@@ -4,6 +4,7 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#define _GNU_SOURCE
 #include <glib.h>
 
 /* lol. */

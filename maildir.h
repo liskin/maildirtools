@@ -4,6 +4,7 @@
 #ifndef MAILDIR_H
 #define MAILDIR_H
 
+#define _GNU_SOURCE
 #include <dirent.h>
 #include <glib.h>
 #include <linux/limits.h>
