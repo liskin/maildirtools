@@ -47,9 +47,9 @@ mailcheck: mailcheck.o libmaildirpp.so
 	$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
 %.so.$(SOMAJOR): %.so.$(SOMAJOR).$(SOMINOR)
-	ln -s $< $@
+	ln -sf $< $@
 %.so: %.so.$(SOMAJOR)
-	ln -s $< $@
+	ln -sf $< $@
 
 %.d: %.c
 	@set -e; rm -f $@; \
