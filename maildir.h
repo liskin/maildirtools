@@ -28,10 +28,22 @@ struct maildir_folder {
 
     /* Non-mandatory fields: */
     struct maildir_folder_stats *stats;
+    GTree *messages; /**< Map of <code>char *</code> (filename) to
+		      *   <code>struct message</code> */
+    GTree *old_messages;
 };
 
 struct maildir_folder_stats {
     int msgs, passed, replied, seen, trashed, draft, flagged, new;
+};
+
+struct message {
+    char *path, ///< Full path.
+	 *name; ///< Msg name. Pointer to the #path array.
+    int flags;
+    char *msg_id; ///< The message ID.
+    GPtrArray *references; /**< List of <code>char *</code>. Already merged
+			    *   with In-Reply-To:s. */
 };
 
 enum message_flags {
@@ -44,7 +56,8 @@ enum message_flags {
 };
 
 enum maildir_folder_data {
-    MFD_STATS	= 1 << 0
+    MFD_STATS	= 1 << 0,
+    MFD_MSGS	= 1 << 1
 };
 
 enum fill_subdirs {
@@ -70,7 +83,8 @@ int maildirpp_dirty_subfolders(struct maildirpp *md, int dont_block);
 void maildirpp_pause_if_not_dirty(struct maildirpp *md);
 int maildirpp_refresh_subfolders_list(struct maildirpp *md);
 void maildirpp_set_verbose(int new_verbose);
-void maildirpp_folders_walk(struct maildirpp *md, GArray *folder_funcs,
+void maildirpp_folders_walk(struct maildirpp *md,
+	GArray *folder_pre_funcs, GArray *folder_post_funcs,
 	GArray *msgs_funcs, int subdirs);
 void maildirpp_folders_fill(struct maildirpp *md, int data, int subdirs);
 

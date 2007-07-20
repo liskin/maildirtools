@@ -8,7 +8,7 @@ LDLIBS=$(shell pkg-config --libs glib-2.0)
 SOMAJOR=0
 SOMINOR=1
 LIBS=libmaildirpp.so
-BINS=mailcheck
+BINS=mailcheck maildirproc
 ALLLIBS=$(foreach lib,$(LIBS),$(lib).$(SOMAJOR).$(SOMINOR) $(lib).$(SOMAJOR) $(lib))
 ALL=$(ALLLIBS) $(BINS)
 SOURCES=$(wildcard *.c)
@@ -32,10 +32,12 @@ install: all
 	done
 	$(LDCONFIG)
 
-libmaildirpp.so.$(SOMAJOR).$(SOMINOR): libmaildirpp.o maildir.o
+libmaildirpp.so.$(SOMAJOR).$(SOMINOR): libmaildirpp.o maildir.o rfc822.o
 
 mailcheck: LDLIBS += -lncurses
 mailcheck: mailcheck.o libmaildirpp.so
+
+maildirproc: maildirproc.o libmaildirpp.so
 
 -include $(SOURCES:.c=.d)
 

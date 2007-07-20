@@ -11,6 +11,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include "maildir.h"
+#include "rfc822.h"
 #include "util.h"
 
 #define DNOTIFY_SIGNAL (SIGRTMIN + 1)
@@ -44,6 +45,13 @@ static void maildir_folder_stats_clear(struct maildir_folder *mdf);
 static void maildir_folder_stats_message(
 	struct maildir_folder_walk_messages_params *params);
 static int message_parse_flags(const char *name);
+static int message_open(struct message *msg);
+static void message_free(struct message *msg);
+static void message_free_and_free(struct message *msg);
+static void maildir_folder_messages_prepare(struct maildir_folder *mdf);
+static void maildir_folder_messages_post(struct maildir_folder *mdf);
+static void maildir_folder_messages_msg(
+	struct maildir_folder_walk_messages_params *params);
 
 
 /** dnotify signal handler. */
@@ -364,6 +372,9 @@ static void maildir_folder_close(struct maildir_folder *mdf)
 
     if (mdf->stats)
 	g_slice_free(struct maildir_folder_stats, mdf->stats);
+    if (mdf->messages)
+	g_tree_destroy(mdf->messages);
+    assert(mdf->old_messages == NULL);
 
     /*memset(mdf, 0, sizeof(struct maildir_folder));*/
 }
@@ -525,7 +536,8 @@ static void maildir_folder_walk_messages(struct maildir_folder *mdf,
  *
  * \param subdirs See #maildir_folder_walk_messages.
  */
-void maildirpp_folders_walk(struct maildirpp *md, GArray *folder_funcs,
+void maildirpp_folders_walk(struct maildirpp *md,
+	GArray *folder_pre_funcs, GArray *folder_post_funcs,
 	GArray *msgs_funcs, int subdirs)
 {
     assert(md->subfolders != NULL);
@@ -538,16 +550,25 @@ void maildirpp_folders_walk(struct maildirpp *md, GArray *folder_funcs,
 	/* For each dirty folder: */
 	if (sig_fd_isset(dirfd(mdf->dir_new), 0, 1) ||
 		sig_fd_isset(dirfd(mdf->dir_cur), 0, 1)) {
-	    /* Call the folder functions. */
-	    for (int j = 0; j < folder_funcs->len; j++) {
+	    /* Call the folder pre functions. */
+	    for (int j = 0; j < folder_pre_funcs->len; j++) {
 		maildir_folder_walk_func f =
-		    g_array_index(folder_funcs, maildir_folder_walk_func, j);
+		    g_array_index(folder_pre_funcs,
+			    maildir_folder_walk_func, j);
 		f(mdf);
 	    }
 
 	    /* Call the message functions. */
 	    if (msgs_funcs->len > 0)
 		maildir_folder_walk_messages(mdf, msgs_funcs, subdirs);
+
+	    /* Call the folder post functions. */
+	    for (int j = 0; j < folder_post_funcs->len; j++) {
+		maildir_folder_walk_func f =
+		    g_array_index(folder_post_funcs,
+			    maildir_folder_walk_func, j);
+		f(mdf);
+	    }
 	}
     }
 }
@@ -560,7 +581,9 @@ void maildirpp_folders_fill(struct maildirpp *md, int data, int subdirs)
 {
     assert(md->subfolders != NULL);
 
-    GArray *folder_funcs = g_array_new(0, 0,
+    GArray *folder_pre_funcs = g_array_new(0, 0,
+	    sizeof(maildir_folder_walk_func));
+    GArray *folder_post_funcs = g_array_new(0, 0,
 	    sizeof(maildir_folder_walk_func));
     GArray *msgs_funcs = g_array_new(0, 0,
 	    sizeof(maildir_folder_walk_messages_func));
@@ -568,14 +591,25 @@ void maildirpp_folders_fill(struct maildirpp *md, int data, int subdirs)
     if (data & MFD_STATS) {
 	maildir_folder_walk_func ff = maildir_folder_stats_clear;
 	maildir_folder_walk_messages_func mf = maildir_folder_stats_message;
-	g_array_append_val(folder_funcs, ff);
+	g_array_append_val(folder_pre_funcs, ff);
 	g_array_append_val(msgs_funcs, mf);
     }
 
-    maildirpp_folders_walk(md, folder_funcs, msgs_funcs, subdirs);
+    if (data & MFD_MSGS) {
+	maildir_folder_walk_func ff = maildir_folder_messages_prepare,
+				 ff2 = maildir_folder_messages_post;
+	maildir_folder_walk_messages_func mf = maildir_folder_messages_msg;
+	g_array_append_val(folder_pre_funcs, ff);
+	g_array_append_val(msgs_funcs, mf);
+	g_array_append_val(folder_post_funcs, ff2);
+    }
+
+    maildirpp_folders_walk(md, folder_pre_funcs, folder_post_funcs,
+	    msgs_funcs, subdirs);
 
     g_array_free(msgs_funcs, 1);
-    g_array_free(folder_funcs, 1);
+    g_array_free(folder_post_funcs, 1);
+    g_array_free(folder_pre_funcs, 1);
 }
 
 /** Free the current and allocate a new stats structure for a given folder
@@ -630,4 +664,98 @@ static int message_parse_flags(const char *name)
 	}
 
     return ret;
+}
+
+/** Fill the message structure with the needed info.
+ *
+ * \return  0 - ok.
+ *         -1 - message ceased to exist.
+ */
+static int message_open(struct message *msg)
+{
+    FILE *m = fopen(msg->path, "r");
+    if (m == NULL)
+	return -1;
+
+    /* Parse flags */
+    msg->flags = message_parse_flags(msg->name);
+
+    /* Parse message id, references and in-reply-tos. */
+    read_rfc822_header(m, msg);
+
+    fclose(m);
+
+    return 0;
+}
+
+/** struct message destructor. */
+static void message_free(struct message *msg)
+{
+    if (msg->path)
+	g_free(msg->path);
+    if (msg->msg_id)
+	g_free(msg->msg_id);
+    if (msg->references) {
+	g_ptr_array_foreach(msg->references, (GFunc) g_free, 0);
+	g_ptr_array_free(msg->references, 1);
+    }
+}
+
+/** Destruct <code>struct message</code> and free the memory occupied by the
+ * struct itself.
+ */
+static void message_free_and_free(struct message *msg)
+{
+    message_free(msg);
+    g_slice_free(struct message, msg);
+}
+
+/** Prepare folder for message indexing:
+ * Save the current #messages map to #old_messages,
+ * alloc new #messages.
+ */
+static void maildir_folder_messages_prepare(struct maildir_folder *mdf)
+{
+    mdf->old_messages = mdf->messages;
+    mdf->messages = g_tree_new_full((GCompareDataFunc) strcmp, 0,
+	    NULL, /* key is a part of the value */
+	    (GDestroyNotify) message_free_and_free);
+}
+
+/** Clean up #old_messages. */
+static void maildir_folder_messages_post(struct maildir_folder *mdf)
+{
+    if (mdf->old_messages) {
+	g_tree_destroy(mdf->old_messages);
+	mdf->old_messages = NULL;
+    }
+}
+
+/** Message indexing walker. */
+static void maildir_folder_messages_msg(
+	struct maildir_folder_walk_messages_params *params)
+{
+    char *key;
+    struct message *value;
+
+    if (params->mdf->old_messages &&
+	    g_tree_lookup_extended(params->mdf->old_messages,
+		params->msg_name, (void **) &key, (void **) &value) == TRUE) {
+	/* The message had been already indexed, and (hopefully) has not
+	 * changed since. */
+	assert(g_tree_steal(params->mdf->old_messages, key) == TRUE);
+	g_tree_insert(params->mdf->messages, key, value);
+    } else {
+	/* New message, index it. */
+	value = g_slice_new0(struct message);
+	value->path = g_strdup(params->msg_full_path);
+	value->name = value->path +
+	    strlen(params->msg_full_path) - strlen(params->msg_name);
+	key = value->name;
+
+	if (message_open(value) == -1)
+	    message_free_and_free(value);
+	else
+	    g_tree_insert(params->mdf->messages, key, value);
+    }
 }
