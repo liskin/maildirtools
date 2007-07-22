@@ -743,7 +743,7 @@ static void maildir_folder_messages_msg(
 		params->msg_name, (void **) &key, (void **) &value) == TRUE) {
 	/* The message had been already indexed, and (hopefully) has not
 	 * changed since. */
-	assert(g_tree_steal(params->mdf->old_messages, key) == TRUE);
+	g_tree_steal(params->mdf->old_messages, key);
 	g_tree_insert(params->mdf->messages, key, value);
     } else {
 	/* New message, index it. */
