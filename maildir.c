@@ -29,6 +29,8 @@ static void sig_handler(int sig, siginfo_t *si, void *data);
 static void sig_init(void);
 static void sig_block(int block);
 static void sig_wait(int (*f) (void *), void *param);
+enum { SFI_ISSET = 0, SFI_CLEAR = 1, SFI_SET   = 2 };
+enum { SFI_DONTBLOCK = 0, SFI_BLOCK = 1 };
 static int sig_fd_isset(int fd, int clear, int sig);
 static int dnotify(int fd, int flags);
 static int maildirpp_load_subfolders_list(struct maildirpp *md);
@@ -115,8 +117,8 @@ static int sig_fd_isset(int fd, int clear, int sig)
 
     if (sig) sig_block(1);
     ret = FD_ISSET(fd, &dirty_fds);
-    if (clear == 1) FD_CLR(fd, &dirty_fds);
-    if (clear == 2) FD_SET(fd, &dirty_fds);
+    if (clear == SFI_CLEAR) FD_CLR(fd, &dirty_fds);
+    if (clear == SFI_SET) FD_SET(fd, &dirty_fds);
     if (sig) sig_block(0);
 
     return ret;
@@ -126,7 +128,7 @@ static int sig_fd_isset(int fd, int clear, int sig)
 static int dnotify(int fd, int flags)
 {
     /* Clear the dirty flag */
-    sig_fd_isset(fd, 1, 1);
+    sig_fd_isset(fd, SFI_CLEAR, SFI_BLOCK);
 
     /* Set up dnotify */
     if (fcntl(fd, F_SETSIG, SIGRTMIN + 1) == -1) {
@@ -197,7 +199,7 @@ static int maildirpp_load_subfolders_list(struct maildirpp *md)
     md->subdirs = g_ptr_array_new();
 
     /* Unset dirty flag and rewind dir */
-    sig_fd_isset(dirfd(md->dir), 1, 1);
+    sig_fd_isset(dirfd(md->dir), SFI_CLEAR, SFI_BLOCK);
     rewinddir(md->dir);
 
     /* Load the list of subfolders */
@@ -349,8 +351,8 @@ static int maildir_folder_open(struct maildir_folder *mdf, const char *path)
 
     /* The folder is dirty by default, because we haven't read any messages
      * yet. */
-    sig_fd_isset(dirfd(mdf->dir_new), 2, 1);
-    sig_fd_isset(dirfd(mdf->dir_cur), 2, 1);
+    sig_fd_isset(dirfd(mdf->dir_new), SFI_SET, SFI_BLOCK);
+    sig_fd_isset(dirfd(mdf->dir_cur), SFI_SET, SFI_BLOCK);
 
     return 0;
 
@@ -394,11 +396,11 @@ int maildirpp_dirty(struct maildirpp *md, int dont_block)
     int ret = 0;
 
     if (!dont_block) sig_block(1);
-    ret = sig_fd_isset(dirfd(md->dir), 0, 0);
+    ret = sig_fd_isset(dirfd(md->dir), SFI_ISSET, SFI_DONTBLOCK);
     assert(md->subdirs != NULL);
     for (int i = 0; !ret && i < md->subdirs->len; i++) {
 	DIR *subdir = (DIR *) g_ptr_array_index(md->subdirs, i);
-	ret |= sig_fd_isset(dirfd(subdir), 0, 0);
+	ret |= sig_fd_isset(dirfd(subdir), SFI_ISSET, SFI_DONTBLOCK);
     }
     if (!dont_block) sig_block(0);
 
@@ -417,8 +419,8 @@ int maildirpp_dirty_subfolders(struct maildirpp *md, int dont_block)
     for (int i = 0; !ret && i < md->subfolders->len; i++) {
 	struct maildir_folder *mdf =
 	    (struct maildir_folder *) g_ptr_array_index(md->subfolders, i);
-	ret |= sig_fd_isset(dirfd(mdf->dir_new), 0, 0);
-	ret |= sig_fd_isset(dirfd(mdf->dir_cur), 0, 0);
+	ret |= sig_fd_isset(dirfd(mdf->dir_new), SFI_ISSET, SFI_DONTBLOCK);
+	ret |= sig_fd_isset(dirfd(mdf->dir_cur), SFI_ISSET, SFI_DONTBLOCK);
     }
     if (!dont_block) sig_block(0);
 
@@ -463,11 +465,11 @@ static void maildir_folder_walk_messages(struct maildir_folder *mdf,
 
     /* Unset dirty flag and rewind dirs */
     if (walk_subdirs & SD_NEW) {
-	sig_fd_isset(dirfd(mdf->dir_new), 1, 1);
+	sig_fd_isset(dirfd(mdf->dir_new), SFI_CLEAR, SFI_BLOCK);
 	rewinddir(mdf->dir_new);
     }
     if (walk_subdirs & SD_CUR) {
-	sig_fd_isset(dirfd(mdf->dir_cur), 1, 1);
+	sig_fd_isset(dirfd(mdf->dir_cur), SFI_CLEAR, SFI_BLOCK);
 	rewinddir(mdf->dir_cur);
     }
 
@@ -548,8 +550,8 @@ void maildirpp_folders_walk(struct maildirpp *md,
 	    (struct maildir_folder *) g_ptr_array_index(md->subfolders, i);
 
 	/* For each dirty folder: */
-	if (sig_fd_isset(dirfd(mdf->dir_new), 0, 1) ||
-		sig_fd_isset(dirfd(mdf->dir_cur), 0, 1)) {
+	if (sig_fd_isset(dirfd(mdf->dir_new), SFI_ISSET, SFI_BLOCK) ||
+		sig_fd_isset(dirfd(mdf->dir_cur), SFI_ISSET, SFI_BLOCK)) {
 	    /* Call the folder pre functions. */
 	    for (int j = 0; j < folder_pre_funcs->len; j++) {
 		maildir_folder_walk_func f =
