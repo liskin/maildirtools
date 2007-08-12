@@ -52,7 +52,8 @@ enum message_flags {
     MF_SEEN	= 1 << 2,
     MF_TRASHED	= 1 << 3,
     MF_DRAFT	= 1 << 4,
-    MF_FLAGGED	= 1 << 5
+    MF_FLAGGED	= 1 << 5,
+    MF_NEW	= 1 << 6 ///< Not Maildir flag, this is our flag.
 };
 
 enum maildir_folder_data {
