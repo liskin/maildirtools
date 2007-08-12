@@ -648,7 +648,7 @@ static int message_parse_flags(const char *name)
 
     const char *flags = strstr(name, ":2,");
     if (!flags)
-	return 0;
+	return MF_NEW;
     flags += 3;
 
     for (; *flags; flags++)
