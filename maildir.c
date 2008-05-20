@@ -132,11 +132,11 @@ static int dnotify(int fd, int flags)
 
     /* Set up dnotify */
     if (fcntl(fd, F_SETSIG, SIGRTMIN + 1) == -1) {
-	perror("fnctl(F_SETSIG)"); return -1;
+	perror("fcntl(F_SETSIG)"); return -1;
     }
 
     if (fcntl(fd, F_NOTIFY, flags) == -1) {
-	perror("fnctl(F_NOTIFY)"); return -1;
+	perror("fcntl(F_NOTIFY)"); return -1;
     }
 
     return 0;
