@@ -76,8 +76,12 @@ static void sig_init(void)
 
     act.sa_sigaction = sig_handler;
     sigemptyset(&act.sa_mask);
-    act.sa_flags = SA_SIGINFO;
+    act.sa_flags = SA_SIGINFO | SA_RESTART;
     sigaction(DNOTIFY_SIGNAL, &act, NULL);
+
+    act.sa_handler = SIG_IGN;
+    act.sa_flags = SA_RESTART;
+    sigaction(SIGIO, &act, NULL);
 
     sig_block(0);
 }
@@ -131,7 +135,7 @@ static int dnotify(int fd, int flags)
     sig_fd_isset(fd, SFI_CLEAR, SFI_BLOCK);
 
     /* Set up dnotify */
-    if (fcntl(fd, F_SETSIG, SIGRTMIN + 1) == -1) {
+    if (fcntl(fd, F_SETSIG, DNOTIFY_SIGNAL) == -1) {
 	perror("fcntl(F_SETSIG)"); return -1;
     }
 
